@@ -286,7 +286,7 @@ export function GeneralSection() {
         </div>
       </DesktopOnlyWrapper>
 
-      {/* ⑤ 显示选项预览 */}
+      {/* ⑥ 显示选项预览 */}
       <div className="bg-bg-secondary rounded-xl p-4 border border-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
