@@ -529,7 +529,11 @@ export function TabBar() {
             disabled={topBarLocked}
             className={clsx(
               'relative p-2 rounded-md transition-colors',
-              topBarLocked ? 'cursor-not-allowed opacity-50' : showUpdatePanel ? 'bg-accent/10' : 'hover:bg-bg-hover',
+              topBarLocked
+                ? 'cursor-not-allowed opacity-50'
+                : showUpdatePanel
+                  ? 'bg-accent/10'
+                  : 'hover:bg-bg-hover',
             )}
             title={
               updateInfo?.hasUpdate
