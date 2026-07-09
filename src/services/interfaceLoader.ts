@@ -6,7 +6,9 @@ import type {
   ControllerType,
   PresetItem,
   GroupItem,
+  PretaskItem,
 } from '@/types/interface';
+import { normalizePretaskConfigs } from '@/types/interface';
 import { loggers } from '@/utils/logger';
 import { parseJsonc } from '@/utils/jsonc';
 import { isTauri } from '@/utils/paths';
@@ -24,6 +26,8 @@ interface ImportableInterface {
   preset?: PresetItem[];
   /** v2.4.0: 支持导入 group */
   group?: GroupItem[];
+  /** v2.7.0: 支持导入 pretask */
+  pretask?: PretaskItem | PretaskItem[];
 }
 
 export interface LoadResult {
@@ -265,6 +269,14 @@ function mergeImported(pi: ProjectInterface, imported: ImportableInterface): voi
         `忽略了 ${skippedDuplicates} 个重名 group，名称包括: ${uniqueDuplicateNames.join(', ')}`,
       );
     }
+  }
+
+  // v2.7.0: 合并 pretask（单对象视为一项，按导入顺序追加为有序列表）
+  const importedPretasks = normalizePretaskConfigs(imported.pretask);
+  if (importedPretasks && importedPretasks.length > 0) {
+    const existing = normalizePretaskConfigs(pi.pretask) || [];
+    pi.pretask = [...existing, ...importedPretasks];
+    log.info(`合并了 ${importedPretasks.length} 个导入的 pretask`);
   }
 }
 
