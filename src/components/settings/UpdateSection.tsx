@@ -324,7 +324,7 @@ export function UpdateSection() {
     try {
       const result = await checkAndPrepareDownload({
         resourceId: projectInterface.mirrorchyan_rid || '',
-        currentVersion: projectInterface.version,
+        currentVersion: projectInterface.version || '',
         cdk: mirrorChyanSettings.cdk || undefined,
         channel: mirrorChyanSettings.channel,
         userAgent: 'MXU',

@@ -999,7 +999,7 @@ function App() {
           try {
             const updateResult = await checkAndPrepareDownload({
               resourceId: result.interface.mirrorchyan_rid || '',
-              currentVersion: result.interface.version,
+              currentVersion: result.interface.version || '',
               cdk: appState.mirrorChyanSettings.cdk || undefined,
               channel: appState.mirrorChyanSettings.channel,
               userAgent: 'MXU',
