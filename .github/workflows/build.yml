@@ -157,12 +157,17 @@ jobs:
       - name: Package artifacts
         run: |
           cd artifacts
+          echo "=== Artifacts structure ==="
+          ls -laR
+          echo "=== Packaging ==="
+          shopt -s nullglob
           for dir in */; do
             name="${dir%/}"
             cd "$name"
             zip -r "../${name}.zip" .
             cd ..
           done
+          echo "=== Result ==="
           ls -la
 
       - name: Create Release
