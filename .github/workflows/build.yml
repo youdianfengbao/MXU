@@ -160,13 +160,7 @@ jobs:
           echo "=== Artifacts structure ==="
           ls -laR
           echo "=== Packaging ==="
-          shopt -s nullglob
-          for dir in */; do
-            name="${dir%/}"
-            cd "$name"
-            zip -r "../${name}.zip" .
-            cd ..
-          done
+          zip -r "MXU-win-x86_64-${{ needs.meta.outputs.tag }}.zip" .
           echo "=== Result ==="
           ls -la
 
