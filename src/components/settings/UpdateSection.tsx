@@ -303,8 +303,12 @@ export function UpdateSection() {
 
   // 检查更新
   const handleCheckUpdate = async () => {
-    if (!projectInterface?.mirrorchyan_rid || !projectInterface?.version) {
-      addDebugLog('未配置 mirrorchyan_rid 或 version，无法检查更新');
+    if (!projectInterface?.version) {
+      addDebugLog('未配置 version，无法检查更新');
+      return;
+    }
+    if (!projectInterface?.mirrorchyan_rid && !projectInterface?.github) {
+      addDebugLog('未配置 mirrorchyan_rid 或 github，无法检查更新');
       return;
     }
 
@@ -319,12 +323,13 @@ export function UpdateSection() {
 
     try {
       const result = await checkAndPrepareDownload({
-        resourceId: projectInterface.mirrorchyan_rid,
+        resourceId: projectInterface.mirrorchyan_rid || '',
         currentVersion: projectInterface.version,
         cdk: mirrorChyanSettings.cdk || undefined,
         channel: mirrorChyanSettings.channel,
         userAgent: 'MXU',
         githubUrl: projectInterface.github,
+        githubPat: mirrorChyanSettings.githubPat || undefined,
         proxyUrl: proxySettings?.url,
         projectName: projectInterface.name,
       });
@@ -357,7 +362,8 @@ export function UpdateSection() {
     }
   };
 
-  if (!projectInterface?.mirrorchyan_rid) {
+  // 当既没有 mirrorchyan_rid 也没有 github 时隐藏整个更新区域
+  if (!projectInterface?.mirrorchyan_rid && !projectInterface?.github) {
     return null;
   }
 
@@ -409,7 +415,8 @@ export function UpdateSection() {
               </div>
             </div>
 
-            {/* CDK 输入 */}
+            {/* CDK 输入（仅当有 mirrorchyan_rid 时显示，无 MirrorChyan 则隐藏） */}
+            {projectInterface?.mirrorchyan_rid && (
             <div className="pt-4 border-t border-border">
               <div className="flex items-center gap-3 mb-3">
                 <Key className="w-5 h-5 text-accent" />
@@ -449,6 +456,7 @@ export function UpdateSection() {
                 </p>
               </div>
             </div>
+            )}
 
             {/* 代理设置 */}
             {!isProxyDisabled && (

@@ -3,6 +3,7 @@
 //! 提供流式文件下载功能，支持进度回调和取消
 
 use log::{error, info, warn};
+use semver::Version;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -142,6 +143,124 @@ pub async fn get_github_release_by_version(
     }
     warn!("未找到匹配的 Release: target_version={}", target_version);
     Ok(None)
+}
+
+/// 获取 GitHub 最新 Release（按 semver 找最高版本）
+///
+/// 使用 GitHub API 获取最近的 releases（最多 10 个），过滤掉 draft，
+/// 对每个 release 的 tag_name 做 semver 解析，返回版本号最高的那个。
+/// 不过滤 prerelease，beta 版本也能检测到。
+/// 支持 GitHub PAT 认证和代理。
+#[tauri::command]
+pub async fn get_latest_github_release(
+    owner: String,
+    repo: String,
+    github_pat: Option<String>,
+    proxy_url: Option<String>,
+) -> Result<Option<GitHubRelease>, String> {
+    let url = format!(
+        "https://api.github.com/repos/{}/{}/releases?per_page=10",
+        owner, repo
+    );
+
+    let mut client_builder = reqwest::Client::builder()
+        .user_agent("mxu")
+        .timeout(std::time::Duration::from_secs(10))
+        .connect_timeout(std::time::Duration::from_secs(3));
+
+    if let Some(ref proxy) = proxy_url {
+        if !proxy.is_empty() {
+            info!("[检查GitHub最新Release] 使用代理: {}", proxy);
+            let reqwest_proxy = reqwest::Proxy::all(proxy).map_err(|e| {
+                error!("代理配置失败: {} (代理地址: {})", e, proxy);
+                format!(
+                    "代理配置失败: {}。请检查代理格式是否正确（支持 http:// 或 socks5://）",
+                    e
+                )
+            })?;
+            client_builder = client_builder.proxy(reqwest_proxy);
+        }
+    }
+
+    let client = client_builder
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+
+    let mut request = client
+        .get(&url)
+        .header(ACCEPT, "application/vnd.github.v3+json")
+        .header(USER_AGENT, "mxu");
+
+    if let Some(pat) = github_pat {
+        if !pat.trim().is_empty() {
+            request = request.header(AUTHORIZATION, format!("token {}", pat.trim()));
+        }
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("请求 GitHub Releases 失败: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("GitHub API 错误: {}", response.status()));
+    }
+
+    let releases: Vec<GitHubRelease> = response
+        .json()
+        .await
+        .map_err(|e| format!("解析 GitHub Releases JSON 失败: {}", e))?;
+
+    let normalize = |v: &str| {
+        v.trim_start_matches(|c| c == 'v' || c == 'V')
+            .to_lowercase()
+    };
+
+    // 找 semver 最高的 release（跳过 draft 和无法解析版本的）
+    let mut best: Option<(Version, &GitHubRelease)> = None;
+    for release in &releases {
+        if release.draft {
+            info!(
+                "[检查GitHub最新Release] 跳过 draft: {}",
+                release.tag_name
+            );
+            continue;
+        }
+
+        let normalized = normalize(&release.tag_name);
+        let parsed = match Version::parse(&normalized) {
+            Ok(v) => v,
+            Err(_) => {
+                warn!(
+                    "[检查GitHub最新Release] 无法解析版本号,跳过: {}",
+                    release.tag_name
+                );
+                continue;
+            }
+        };
+
+        if let Some((ref best_ver, _)) = best {
+            if parsed > *best_ver {
+                best = Some((parsed, release));
+            }
+        } else {
+            best = Some((parsed, release));
+        }
+    }
+
+    match best {
+        Some((ver, release)) => {
+            info!(
+                "[检查GitHub最新Release] 最高版本: {} (tag: {})",
+                ver, release.tag_name
+            );
+            Ok(Some(release.clone()))
+        }
+        None => {
+            warn!("[检查GitHub最新Release] 未找到有效的 release");
+            Ok(None)
+        }
+    }
 }
 
 /// 流式下载文件，支持进度回调和取消

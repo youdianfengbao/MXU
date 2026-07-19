@@ -985,7 +985,11 @@ function App() {
       }
 
       // 自动检查更新并下载（调试版本跳过，MXU 开发模式跳过）
-      if (result.interface.mirrorchyan_rid && result.interface.version) {
+      // mirrorchyan_rid 或 github 任一有且 version 存在时才检查
+      const canAutoCheck =
+        (result.interface.mirrorchyan_rid || result.interface.github) &&
+        result.interface.version;
+      if (canAutoCheck) {
         if (import.meta.env.DEV) {
           log.info('MXU 开发模式，跳过自动更新检查');
         } else if (isDebugVersion(result.interface.version)) {
@@ -994,7 +998,7 @@ function App() {
           const appState = useAppStore.getState();
           try {
             const updateResult = await checkAndPrepareDownload({
-              resourceId: result.interface.mirrorchyan_rid,
+              resourceId: result.interface.mirrorchyan_rid || '',
               currentVersion: result.interface.version,
               cdk: appState.mirrorChyanSettings.cdk || undefined,
               channel: appState.mirrorChyanSettings.channel,

@@ -119,6 +119,7 @@ interface GitHubRelease {
   name: string;
   body: string;
   prerelease: boolean;
+  draft: boolean;
   assets: GitHubAsset[];
 }
 
@@ -484,6 +485,59 @@ function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
     return { owner: match[1], repo: match[2] };
   }
   return null;
+}
+
+/**
+ * 通过 GitHub Releases API 检查最新版本
+ *
+ * 当 interface.json 没有 mirrorchyan_rid 时，直接查 GitHub Releases 找最新版本。
+ * 调用 Rust 后端的 get_latest_github_release 命令，该命令：
+ * - 获取最近 10 个 release
+ * - 过滤掉 draft
+ * - 用 semver 解析 tag_name，找版本号最高的
+ * - 不过滤 prerelease（beta 也能检测到）
+ *
+ * @returns UpdateInfo 或 null（没有有效 release 时）
+ */
+export async function checkGitHubRelease(options: {
+  owner: string;
+  repo: string;
+  currentVersion: string;
+  githubPat?: string;
+  proxyUrl?: string;
+}): Promise<UpdateInfo | null> {
+  const { owner, repo, currentVersion, githubPat, proxyUrl } = options;
+
+  try {
+    const release = await invoke<GitHubRelease | null>('get_latest_github_release', {
+      owner,
+      repo,
+      githubPat,
+      proxyUrl: proxyUrl || null,
+    });
+
+    if (!release) {
+      log.info('GitHub Releases 未找到有效 release');
+      return null;
+    }
+
+    const hasUpdate = compareVersions(release.tag_name, currentVersion) > 0;
+
+    log.info(
+      `GitHub 最新版本: ${release.tag_name}, 当前: ${currentVersion}, 有更新: ${hasUpdate}`,
+    );
+
+    return {
+      hasUpdate,
+      versionName: release.tag_name,
+      releaseNote: release.body || '',
+      channel: release.prerelease ? 'beta' : 'stable',
+      downloadSource: 'github',
+    };
+  } catch (error) {
+    log.error('检查 GitHub 最新 Release 失败:', error);
+    return null;
+  }
 }
 
 /**
@@ -875,7 +929,56 @@ export async function checkAndPrepareDownload(
 
   const { githubUrl, cdk, channel, githubPat, projectName, proxyUrl, ...checkOptions } = options;
 
-  // 始终使用 Mirror酱 检查更新
+  // 当 resourceId 为空时，走 GitHub Releases 路径（不依赖 MirrorChyan）
+  if (!checkOptions.resourceId) {
+    if (!githubUrl) {
+      log.warn('未配置 mirrorchyan_rid 且未配置 github，无法检查更新');
+      return null;
+    }
+
+    const parsed = parseGitHubUrl(githubUrl);
+    if (!parsed) {
+      log.warn('无法解析 GitHub URL:', githubUrl);
+      return null;
+    }
+
+    log.info(`无 mirrorchyan_rid，直接从 GitHub 检查最新版本: ${parsed.owner}/${parsed.repo}`);
+    const updateInfo = await checkGitHubRelease({
+      owner: parsed.owner,
+      repo: parsed.repo,
+      currentVersion: checkOptions.currentVersion,
+      githubPat,
+      proxyUrl,
+    });
+
+    if (!updateInfo || !updateInfo.hasUpdate) {
+      return updateInfo;
+    }
+
+    // 有更新，尝试获取 GitHub 下载链接
+    const githubDownload = await getGitHubDownloadUrl({
+      githubUrl,
+      targetVersion: updateInfo.versionName,
+      githubPat,
+      projectName,
+      proxyUrl,
+    });
+
+    if (githubDownload) {
+      return {
+        ...updateInfo,
+        downloadUrl: githubDownload.url,
+        fileSize: githubDownload.size,
+        filename: githubDownload.filename,
+        downloadSource: 'github',
+      };
+    }
+
+    // 有更新但拿不到下载链接
+    return updateInfo;
+  }
+
+  // 以下是原有的 MirrorChyan 路径（resourceId 不为空）
   const updateInfo = await checkUpdate({ ...checkOptions, cdk, channel });
 
   if (!updateInfo || !updateInfo.hasUpdate) {
